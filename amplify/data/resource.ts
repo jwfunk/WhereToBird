@@ -1,18 +1,82 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { ebirdProxy } from "../functions/ebird-proxy/resource";
 
-/*== STEP 1 ===============================================================
-The section below creates a Todo database table with a "content" field. Try
-adding a new "isDone" field as a boolean. The authorization rule below
-specifies that any unauthenticated user can "create", "read", "update", 
-and "delete" any "Todo" records.
-=========================================================================*/
+// Define a custom type that mirrors the userObservations model
+
+
 const schema = a.schema({
-  UserData: a
-    .model({
-      ebirdAPIKey: a.string(),
-      Email: a.string()
+  UserObservationInput: a.customType({
+  SubmissionID: a.string(),
+  CommonName: a.string(),
+  ScientificName: a.string(),
+  Count: a.string(),
+  StateProvince: a.string(),
+  County: a.string(),
+  LocationID: a.string(),
+  Latitude: a.float(),
+  Longitude: a.float(),
+  Date: a.date(),
+  Time: a.time()
+
+}),
+UserObservationDelete: a.customType({
+  id: a.string()
+}),
+  userObservations: a.model({
+    SubmissionID: a.string(),
+    CommonName: a.string(),
+    ScientificName: a.string(),
+    Count: a.string(),
+    StateProvince: a.string(),
+    County: a.string(),
+    LocationID: a.string(),
+    Latitude: a.float(),
+    Longitude: a.float(),
+    Date: a.date(),
+    Time: a.time(),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime(),
+    id: a.id(),
+    owner: a.string()
+
+  }).authorization(allow => [allow.owner()]),
+  getEBirdData: a
+    .query()
+    .arguments({
+      lat: a.float().required(),
+      lng: a.float().required(),
+      apiKey: a.string().required(),
     })
-    .authorization((allow) => [allow.owner()]),
+    .returns(a.string())
+    .handler(a.handler.function(ebirdProxy))
+    .authorization(allow => [allow.authenticated()])
+    ,
+  BatchCreateUserObservations: a
+    .mutation()
+    .arguments({
+      observations: a.ref('UserObservationInput').array().required()
+    })
+    .returns(a.ref('userObservations').array())
+    .authorization(allow => [allow.authenticated()])
+    .handler(
+      a.handler.custom({
+        dataSource: a.ref('userObservations'),
+        entry: './BatchCreateUserObservationsHandler.js',
+      })
+    ),
+    BatchDeleteUserObservations: a
+    .mutation()
+    .arguments({
+      ids: a.id().array().required()
+    })
+    .returns(a.ref('userObservations').array())
+    .authorization(allow => [allow.authenticated()])
+    .handler(
+      a.handler.custom({
+        dataSource: a.ref('userObservations'),
+        entry: './BatchDeleteUserObservationsHandler.js'
+      })
+    )
 });
 
 export type Schema = ClientSchema<typeof schema>;
@@ -23,32 +87,3 @@ export const data = defineData({
     defaultAuthorizationMode: 'userPool',
   },
 });
-
-/*== STEP 2 ===============================================================
-Go to your frontend source code. From your client-side code, generate a
-Data client to make CRUDL requests to your table. (THIS SNIPPET WILL ONLY
-WORK IN THE FRONTEND CODE FILE.)
-
-Using JavaScript or Next.js React Server Components, Middleware, Server 
-Actions or Pages Router? Review how to generate Data clients for those use
-cases: https://docs.amplify.aws/gen2/build-a-backend/data/connect-to-API/
-=========================================================================*/
-
-/*
-"use client"
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-
-const client = generateClient<Schema>() // use this Data client for CRUDL requests
-*/
-
-/*== STEP 3 ===============================================================
-Fetch records from the database and use them in your frontend component.
-(THIS SNIPPET WILL ONLY WORK IN THE FRONTEND CODE FILE.)
-=========================================================================*/
-
-/* For example, in a React component, you can use this snippet in your
-  function's RETURN statement */
-// const { data: todos } = await client.models.Todo.list()
-
-// return <ul>{todos.map(todo => <li key={todo.id}>{todo.content}</li>)}</ul>
