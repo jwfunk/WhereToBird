@@ -9,6 +9,13 @@ import outputs from '../amplify_outputs.json';
 import '@aws-amplify/ui-react/styles.css';
 import { Amplify } from 'aws-amplify';
 import { Authenticator } from '@aws-amplify/ui-react';
+import DesktopMenuBar from './components/DesktopMenuBar.tsx';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Home from './components/Home';
+import SubmitChecklist from './components/SubmitChecklist';
+import ReviewChecklists from './components/ReviewChecklists';
+import Map from './components/Map';
+
 Amplify.configure(outputs);
 // Fix for default marker icons in Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -25,6 +32,8 @@ function App() {
   const [error, setError] = useState('')
   const [mapCenter, setMapCenter] = useState([51.505, -0.09]) // Default to London
   const [mapZoom, setMapZoom] = useState(13)
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
+  const [userObservations, setUserObservations] = useState([])
 
   // Get user's current location
   const getUserLocation = () => {
@@ -42,26 +51,20 @@ function App() {
         setUserLocation({ lat: latitude, lng: longitude })
         setMapCenter([latitude, longitude])
         setMapZoom(13)
-        // Simulate fetching checklists for demo purposes
-        simulateFetchChecklists(latitude, longitude)
+        // Fetch real checklists from eBird API
+        fetchChecklists(latitude, longitude)
       },
       (err) => {
-        setError(`Unable to retrieve your location: ${err.message}`)
-        setLoading(false)
+        setError('Unable to retrieve your location. Using default location.')
+        // Use default location if geolocation fails
+        fetchChecklists(51.505, -0.09)
       }
     )
   }
-  const client = generateClient<Schema>()
-  const writeAPIKey = async () => {
-    await client.models.UserData.create({
-      ebirdAPIKey: window.prompt("api?"),
-      Email: window.prompt("Email?")
-    })
-  }
 
-  // Simulate fetching checklists from eBird API
-  const simulateFetchChecklists = (latitude, longitude) => {
-    // In a real app, this would call the eBird API
+  // Mock function to simulate fetching checklists
+  const fetchChecklists = (latitude, longitude) => {
+    // This would be replaced with actual API call
     setTimeout(() => {
       const mockChecklists = [
         {
@@ -100,87 +103,83 @@ function App() {
   }, [])
 
   return (
-    <Authenticator>
-      {({ signOut, user }) => (
-    <div className="app">
-      <header className="app-header">
-        <h1>WhereToBird</h1>
-        <p>Find birding checklists near your location</p>
-      </header>
-
-      <main className="app-main">
-        {error && (
-          <div className="error-message">
-            <p>{error}</p>
-          </div>
-        )}
-
-        {loading && (
-          <div className="loading-message">
-            <p>Getting your location and finding nearby checklists...</p>
-          </div>
-        )}
-
-        <div className="map-container">
-          <MapContainer
-            center={mapCenter}
-            zoom={mapZoom}
-            style={{ height: '500px', width: '100%' }}
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    <Router>
+      <Authenticator>
+        {({ signOut, user }) => (
+          <div className="app">
+            <DesktopMenuBar
+              apiKey={localStorage.getItem('ebird-api-key')}
+              onApiKeyChange={(key) => {
+                // Update local storage and also set it in the state if needed
+                localStorage.setItem('ebird-api-key', key);
+              }}
             />
 
-            {userLocation && (
-              <Marker position={userLocation}>
-                <Popup>
-                  Your Location
-                </Popup>
-              </Marker>
-            )}
+            <Routes>
+              {/* Home page route - shown when user is signed in */}
+              <Route
+                path="/"
+                element={
+                  user ? (
+                    <Home />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
 
-            {/* Render checklists on the map */}
-            {checklists.map((checklist) => {
-              if (checklist.lat && checklist.lng) {
-                return (
-                  <Marker key={checklist.id} position={[checklist.lat, checklist.lng]}>
-                    <Popup>
-                      <div className="checklist-popup">
-                        <h3>{checklist.speciesCode}</h3>
-                        <p>Count: {checklist.count || 'N/A'}</p>
-                        <p>Date: {checklist.obsDt}</p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                )
-              }
-              return null
-            })}
-          </MapContainer>
-        </div>
+              {/* Submit Checklist page */}
+              <Route
+                path="/submit-checklist"
+                element={
+                  user ? (
+                    <SubmitChecklist />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
 
-        <div className="checklists-section">
-          <button onClick={writeAPIKey}>Add</button>
-          <h2>Nearby Checklists</h2>
-          {checklists.length > 0 ? (
-            <div className="checklists-list">
-              {checklists.map((checklist) => (
-                <div key={checklist.id} className="checklist-item">
-                  <h3>{checklist.speciesCode}</h3>
-                  <p>Count: {checklist.count || 'N/A'}</p>
-                  <p>Date: {checklist.obsDt || 'N/A'}</p>
-                  <p>Location: {checklist.lat?.toFixed(4)}, {checklist.lng?.toFixed(4)}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            !loading && <p>No checklists found. Please try again later.</p>
-          )}
-        </div>
-      </main>
-    </div>)}
-    </Authenticator>
+              {/* Review Checklists page */}
+              <Route
+                path="/review-checklists"
+                element={
+                  user ? (
+                    <ReviewChecklists />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+
+              {/* Map page */}
+              <Route
+                path="/map"
+                element={
+                  user ? (
+                    <Map />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+
+              {/* Default route - redirect to home if user is signed in */}
+              <Route
+                path="*"
+                element={
+                  user ? (
+                    <Navigate to="/" replace />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+            </Routes>
+          </div>
+        )}
+      </Authenticator>
+    </Router>
   )
 }
 
